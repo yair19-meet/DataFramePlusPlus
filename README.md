@@ -49,3 +49,8 @@ It is encouraged to use this framework not only in Data analysis tasks but also 
 
 DataFrame++ is created by Yair Tal.
 
+
+Compilation example:
+
+{path}\DataFramePlusPlus\src> g++ .\library.cpp .\main.cpp -std=c++20
+{path}\DataFramePlusPlus\src> .\a.exe
