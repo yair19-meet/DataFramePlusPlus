@@ -18,18 +18,31 @@ Each Column has a corresponding header, corresponding value cells, and a data ty
 Note: The data is stored column wise, not row wise. Meaning each column is an object. Cells are connected in rows implicitly.
 
 The functionality of the DataFrame includes:
+
     - Aggregations (min, max, sum, avg, mode, count, standard deviation)
+
     - Vertical Concatenation (of two dataFrame objects)
+
     - GroupBy
+
     - ValueCounts
+
     - Subsetting of rows
+
     - Subsetting of columns
+
     - Filtering (==, <, >, <=, >=, !=)
+
     - Index Reset
+
     - Pivot table
+
     - Simple plots inside the terminal
+
     - Sorting
+
     - Reading/Writing from/to CSV
+    
     - Converting the index into column(s)
 
 
