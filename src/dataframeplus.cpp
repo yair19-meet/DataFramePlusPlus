@@ -2018,9 +2018,7 @@ ColumnBase* DataFrame::getColumn(std::string colName) const {
 
 
 // Explicit template instantiations for the linker
-template class Column<long long, DataType::kInt64>;
 template class Column<double, DataType::kFloat64>;
 template class Column<std::string, DataType::kString>;
-template class Column<long long, DataType::kDate>;
 template class Column<int64_t, DataType::kInt64>;
 template class Column<int64_t, DataType::kDate>;

@@ -62,7 +62,7 @@ The use of this framework is suitable for data analysis tasks as well as for any
 
 Static compilation example (Windows):
 
-{path}\DataFramePlusPlus\src> g++ .\dataframeplus.cpp .\main.cpp -std=c++20
+{path}\DataFramePlusPlus\src> g++ .\dataframeplus.cpp ..\usage\main.cpp -std=c++20
 
 {path}\DataFramePlusPlus\src> .\a.exe
 
