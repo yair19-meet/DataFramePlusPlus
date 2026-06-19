@@ -1,5 +1,4 @@
-#ifndef LIBRARY_H
-#define LIBRARY_H
+#pragma once
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -95,6 +94,10 @@ private:
     std::vector<T> _data;
 };
 
+using DateColumn = Column<int64_t, DataType::kDate>;
+using IntColumn = Column<int64_t, DataType::kInt64>;
+using StringColumn = Column<std::string, DataType::kString>;
+using FloatColumn = Column<double, DataType::kFloat64>;
 
 class DataFrame 
 {
@@ -139,7 +142,9 @@ public:
     std::unique_ptr<DataFrame> clone() const;
     void dropIndex();
     std::vector<size_t> operator==(const std::string& target);
+    std::vector<size_t> operator!=(const std::string& target);
     std::vector<size_t> operator==(const double target);
+    std::vector<size_t> operator!=(const double target);
     std::vector<size_t> operator>(const double target);
     std::vector<size_t> operator<(const double target);
     std::vector<size_t> operator>=(const double target);
@@ -158,7 +163,6 @@ public:
 };
 
 
-
 /*
 TO DO:
 printElement - should get output stream , and padding parameter.
@@ -167,8 +171,3 @@ There should be a function updateMaxLength getMaxLength thats t=gets the attribu
 Rename the functions to be lowercase.
 make the parsing functions static.
 */
-
-
-
-
-#endif /* LIBRARY_H */

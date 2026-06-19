@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <cmath>
-#include "library.h"
+#include "dataframeplus.h"
 
 int64_t DataFrame::parseDate(const std::string& s)
 {
@@ -1714,6 +1714,27 @@ std::vector<size_t> DataFrame::operator==(const std::string& target)
     return perm;
 }
 
+
+std::vector<size_t> DataFrame::operator!=(const std::string& target)
+{
+    if (_dimensions.second != 1)
+        throw std::logic_error("Expected a dataframe with one column. Cannot make comparison.\n");
+    else if (_dataFrame[0]->getType() != DataType::kString)
+        throw std::logic_error("Expected a string column. Cannot make comparison.\n");
+
+    std::vector<size_t> perm;
+    
+    for (int index = 0; index < _dataFrame[0]->len(); ++index)
+    {
+        if (_dataFrame[0]->getAsString(index) != target) {
+            perm.push_back(index);
+        }
+    }
+    return perm;
+}
+
+
+
 std::vector<size_t> DataFrame::operator==(const double target)
 {
     if (_dimensions.second != 1)
@@ -1726,6 +1747,24 @@ std::vector<size_t> DataFrame::operator==(const double target)
     for (int index = 0; index < _dataFrame[0]->len(); ++index)
     {
         if (_dataFrame[0]->getAsDouble(index) == target) {
+            perm.push_back(index);
+        }
+    }
+    return perm;   
+}
+
+std::vector<size_t> DataFrame::operator!=(const double target)
+{
+    if (_dimensions.second != 1)
+        throw std::logic_error("Expected a dataframe with one column. Cannot make comparison.\n");
+    else if (_dataFrame[0]->getType() == DataType::kString)
+        throw std::logic_error("Expected a numeric column. Cannot make comparison.\n");
+
+    std::vector<size_t> perm;
+    
+    for (int index = 0; index < _dataFrame[0]->len(); ++index)
+    {
+        if (_dataFrame[0]->getAsDouble(index) != target) {
             perm.push_back(index);
         }
     }
@@ -1941,13 +1980,6 @@ void DataFrame::renameColumns(std::vector<std::string> header)
 }
 
 
-// Explicit template instantiations for the linker
-template class Column<long long, DataType::kInt64>;
-template class Column<double, DataType::kFloat64>;
-template class Column<std::string, DataType::kString>;
-template class Column<long long, DataType::kDate>;
-
-
 void DataFrame::dropColumn(std::string colName) {
     for (auto it = _dataFrame.begin(); it != _dataFrame.end(); ++it) {
         if ((*it)->getHeader() == colName) {
@@ -1983,3 +2015,12 @@ ColumnBase* DataFrame::getColumn(std::string colName) const {
     }
     return nullptr;
 }
+
+
+// Explicit template instantiations for the linker
+template class Column<long long, DataType::kInt64>;
+template class Column<double, DataType::kFloat64>;
+template class Column<std::string, DataType::kString>;
+template class Column<long long, DataType::kDate>;
+template class Column<int64_t, DataType::kInt64>;
+template class Column<int64_t, DataType::kDate>;

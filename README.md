@@ -1,17 +1,17 @@
 # DataFramePlusPlus
-Pandas inspired Dataframes framework for C++
+Pandas-inspired Dataframes framework for C++
 
 This repository contains the source code of a C++ native data analysis library - an alternative to Pandas for C++ developers.
 
-The framework contains three classes, two of which are hidden to the users of the framework (ColumnBase, Column).
-The user of the framework should solely interact with the DataFrame class.
+The framework contains three classes: ColumnBase, Column and DataFrame. 
+ColumnBase is a pure virtual class. It includes the implementation of the common functionallity of all types of columns.
+Column is a templated class that derives from ColumnBase.
+A DataFrame object contains a collection of Column objects.
+The user should solely interact with the DataFrame and Column classes.
 
-A column is an extension of a ColumnBase.
-A DataFrame contains a vector of Columns (ColumnBase objects).
+Four Data types are supported for the data stored in the DataFrame: Integer, Float, String and Date.
 
-Four Data types are supported by the framework: Integer, Float, String and Date.
-
-A DataFrame is an object for storing tabular data.
+A DataFrame is an object for storing tabular data. It can contain columns of different types.
 A DataFrame contains an index object (which can be multi index), and column(s). 
 Each Column has a corresponding header, corresponding value cells, and a data type.
 
@@ -24,7 +24,7 @@ The functionality of the DataFrame includes:
     - ValueCounts
     - Subsetting of rows
     - Subsetting of columns
-    - Filtering
+    - Filtering (==, <, >, <=, >=, !=)
     - Index Reset
     - Pivot table
     - Simple plots inside the terminal
@@ -38,19 +38,18 @@ For instance, when you perform GroupBy, the underlying DataFrame is not modified
 
 The users of the framework should have basic familiarity of smart pointers due to its heavy usage.
 
-An illustration of the framework's syntax is given in the file "main.cpp" inside the "usage" folder.
+A usage example of the framework is given in the file "main.cpp" inside the "usage" folder.
 A comparison of the code in "main.cpp" with the syntax of Pandas is given in "example_code.py" inside the "usage" folder.
 
-The library source code is free to use. The only requirement is to give full credit.
-It is encouraged to use this framework not only in Data analysis tasks but also for bigger projects where usage of tabular data is heavy.
+The library source code is free to use. The only requirement is to give credit.
+The use of this framework is suitable for data analysis tasks as well as for any other projects where usage of tabular data is heavy.
 
 "src/library.h" is the header file of the framework.
 "src/library.cpp" is the cpp implementation of the framework.
 
-DataFrame++ is created by Yair Tal.
+Static compilation example (Windows):
 
-
-Compilation example:
-
-{path}\DataFramePlusPlus\src> g++ .\library.cpp .\main.cpp -std=c++20
+{path}\DataFramePlusPlus\src> g++ .\dataframeplus.cpp .\main.cpp -std=c++20
 {path}\DataFramePlusPlus\src> .\a.exe
+
+DataFrame++ is created by Yair Tal.
