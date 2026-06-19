@@ -42,7 +42,7 @@ The functionality of the DataFrame includes:
     - Sorting
 
     - Reading/Writing from/to CSV
-    
+
     - Converting the index into column(s)
 
 
@@ -54,7 +54,7 @@ The users of the framework should have basic familiarity of smart pointers due t
 A usage example of the framework is given in the file "main.cpp" inside the "usage" folder.
 A comparison of the code in "main.cpp" with the syntax of Pandas is given in "example_code.py" inside the "usage" folder.
 
-The library source code is free to use. The only requirement is to give credit.
+The library source code is free to use. The only requirement is to give credit to Yair Tal.
 The use of this framework is suitable for data analysis tasks as well as for any other projects where usage of tabular data is heavy.
 
 "src/library.h" is the header file of the framework.
