@@ -1013,7 +1013,7 @@ std::unique_ptr<DataFrame> DataFrame::groupByOnly(std::vector<std::string> colum
         colIndex++;
     }
 
-    // now we find the index for the columns to group by. We make sure that it is of type string.
+    // now we find the index for the columns to group by. 
     std::vector<int> groupCols;
     for (auto& columnToGroup : columnsToGroup)
     {
