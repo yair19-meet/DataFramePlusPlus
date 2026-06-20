@@ -265,7 +265,7 @@ public:
     static int64_t parseDate(const std::string& s);
     void renameColumns(std::vector<std::string> header);
     void transitionGroupedColumns(const std::vector<std::string>& names);
-    void convertDataType(std::string column, DataType dtype);
+    void convertDataType(std::string col, DataType dtype);
 };
 
 inline std::vector<std::string> IntsToDateStrings(const std::vector<int64_t>& in) {
