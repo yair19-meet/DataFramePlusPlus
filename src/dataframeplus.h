@@ -5,11 +5,118 @@
 #include <cctype>
 #include <cstdint>
 #include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <charconv>
+#include <string>
+#include <system_error>
+
 
 inline std::string to_lowercase(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
         [](unsigned char c) { return std::tolower(c); });
     return s;
+}
+
+inline std::vector<double> IntsToDoubles(const std::vector<int64_t>& in) {
+    std::vector<double> out;
+    out.reserve(in.size());
+    for (auto v : in) out.push_back(static_cast<double>(v));
+    return out;
+}
+
+inline std::vector<int64_t> DoublesToInts(const std::vector<double>& in) {
+    std::vector<int64_t> out;
+    out.reserve(in.size());
+    for (auto v : in) out.push_back(static_cast<int64_t>(v));
+    return out;
+}
+
+inline std::vector<std::string> IntsToStrings(const std::vector<int64_t>& in) {
+    std::vector<std::string> out;
+    out.reserve(in.size());
+    for (auto v : in) out.push_back(std::to_string(v));
+    return out;
+}
+
+inline std::vector<std::string> DoublesToStrings(const std::vector<double>& in) {
+    std::vector<std::string> out;
+    out.reserve(in.size());
+    for (auto v : in) {
+        std::ostringstream ss;
+        ss << v;
+        out.push_back(ss.str());
+    }
+    return out;
+}
+
+inline int64_t StringToInt(const std::string& s) {
+    if (s.empty()) {
+        throw std::invalid_argument("Cannot convert empty string to int64_t");
+    }
+
+    int64_t value = 0;
+    // from_chars takes pointers to the beginning and end of the buffer
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+
+    if (ec == std::errc::invalid_argument) {
+        throw std::invalid_argument("Invalid integer string: '" + s + "'");
+    } else if (ec == std::errc::result_out_of_range) {
+        throw std::out_of_range("Integer out of range: '" + s + "'");
+    } else if (ptr != s.data() + s.size()) {
+        throw std::invalid_argument("Trailing characters found in: '" + s + "'");
+    }
+
+    return value;
+}
+
+inline std::vector<int64_t> StringsToInts(const std::vector<std::string>& in) {
+    std::vector<int64_t> out;
+    out.reserve(in.size());
+    for (auto v : in) out.push_back(StringToInt(v));
+    return out;
+}
+
+inline double StringToDouble(const std::string& s) {
+    if (s.empty()) {
+        throw std::invalid_argument("Cannot convert empty string to double");
+    }
+
+    // Trim trailing whitespace to ensure strict exact-match parsing.
+    // (std::stod naturally skips leading whitespace, so we only need to worry about the end)
+    size_t end_pos = s.find_last_not_of(" \t\n\r\f\v");
+    if (end_pos == std::string::npos) {
+        throw std::invalid_argument("String contains only whitespace");
+    }
+    
+    // Create a view of the string without trailing spaces
+    std::string trimmed = s.substr(0, end_pos + 1);
+
+    size_t idx = 0;
+    double value = 0.0;
+
+    // Parse and catch specific exceptions so callers know exactly what failed
+    try {
+        value = std::stod(trimmed, &idx);
+    } catch (const std::invalid_argument&) {
+        throw std::invalid_argument("Invalid double string: '" + s + "'");
+    } catch (const std::out_of_range&) {
+        throw std::out_of_range("Double out of range (overflow/underflow): '" + s + "'");
+    }
+
+    // Strict check for trailing garbage characters (e.g., "3.14abc")
+    if (idx != trimmed.size()) {
+        throw std::invalid_argument("Trailing characters found: '" + s + "'");
+    }
+
+    return value;
+}
+
+inline std::vector<double> StringsToDoubles(const std::vector<std::string>& in) {
+    std::vector<double> out;
+    out.reserve(in.size());
+    for (auto v : in) out.push_back(StringToDouble(v));
+    return out;
 }
 
 /**
@@ -158,10 +265,26 @@ public:
     static int64_t parseDate(const std::string& s);
     void renameColumns(std::vector<std::string> header);
     void transitionGroupedColumns(const std::vector<std::string>& names);
-    std::string toJson() const; // Helper for Wasm/UI
-    std::string toCsvString() const; // Helper for Wasm saving
+    void convertDataType(std::string column, DataType dtype);
 };
 
+inline std::vector<std::string> IntsToDateStrings(const std::vector<int64_t>& in) {
+    std::vector<std::string> out;
+    out.reserve(in.size());
+    for (auto v : in) {
+        out.push_back(DataFrame::formatDate(v));
+    }
+    return out;
+}
+
+inline std::vector<int64_t> StringsToDateInts(const std::vector<std::string>& in) {
+    std::vector<int64_t> out;
+    out.reserve(in.size());
+    for (auto v : in) {
+        out.push_back(DataFrame::parseDate(v));
+    }
+    return out;
+}
 
 /*
 TO DO:

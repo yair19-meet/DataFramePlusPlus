@@ -2019,6 +2019,165 @@ ColumnBase* DataFrame::getColumn(std::string colName) const {
 }
 
 
+ void DataFrame::convertDataType(std::string col, DataType dtype) {
+    int colToChange;
+    bool found = false;
+    for (int i = 0; i < this->_dimensions.second; ++i)
+    {
+        if (col == this->_dataFrame[i]->getHeader()) {
+            colToChange = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        std::cout << "column not found: " << col << ".\n";
+        return;
+    }
+
+    ColumnBase* rawCol = _dataFrame[colToChange].get();
+
+    if (dtype == DataType::kInt64) {
+        if (rawCol->getType() == DataType::kInt64) {
+            return;
+        } else if (rawCol->getType() == DataType::kFloat64) {
+            auto realCol = dynamic_cast<Column<double, DataType::kFloat64>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast float64 column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<int64_t, DataType::kInt64>>(
+                DoublesToInts(realCol->getData()),
+                realCol->getHeader()
+            );
+        } else if (rawCol->getType() == DataType::kString) {
+            auto realCol = dynamic_cast<Column<std::string, DataType::kString>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast string column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<int64_t, DataType::kInt64>>(
+                StringsToInts(realCol->getData()),
+                realCol->getHeader()
+            );            
+        } else if (rawCol->getType() == DataType::kDate) {
+            auto realCol = dynamic_cast<Column<int64_t, DataType::kDate>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast date column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<int64_t, DataType::kInt64>>(
+                realCol->getData(),
+                realCol->getHeader()
+            );    
+        }
+    } else if (dtype == DataType::kFloat64) {
+        if (rawCol->getType() == DataType::kInt64) {
+            auto realCol = dynamic_cast<Column<int64_t, DataType::kInt64>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast int64 column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<double, DataType::kFloat64>>(
+                IntsToDoubles(realCol->getData()),
+                realCol->getHeader()
+            );
+        } else if (rawCol->getType() == DataType::kFloat64) {
+            return;
+        } else if (rawCol->getType() == DataType::kString) {
+            auto realCol = dynamic_cast<Column<std::string, DataType::kString>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast string column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<double, DataType::kFloat64>>(
+                StringsToDoubles(realCol->getData()),
+                realCol->getHeader()
+            );            
+        } else if (rawCol->getType() == DataType::kDate) {
+            auto realCol = dynamic_cast<Column<int64_t, DataType::kDate>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast date column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<double, DataType::kFloat64>>(
+                IntsToDoubles(realCol->getData()),
+                realCol->getHeader()
+            );   
+        }        
+    } else if (dtype == DataType::kString) {
+        if (rawCol->getType() == DataType::kInt64) {
+            auto realCol = dynamic_cast<Column<int64_t, DataType::kInt64>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast int64 column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<std::string, DataType::kString>>(
+                IntsToStrings(realCol->getData()),
+                realCol->getHeader()
+            );
+        } else if (rawCol->getType() == DataType::kFloat64) {
+            auto realCol = dynamic_cast<Column<double, DataType::kFloat64>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast float64 column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<std::string, DataType::kString>>(
+                DoublesToStrings(realCol->getData()),
+                realCol->getHeader()
+            );
+        } else if (rawCol->getType() == DataType::kString) {
+            return;           
+        } else if (rawCol->getType() == DataType::kDate) {
+            auto realCol = dynamic_cast<Column<int64_t, DataType::kDate>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast date column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<std::string, DataType::kString>>(
+                IntsToDateStrings(realCol->getData()),
+                realCol->getHeader()
+            );   
+        }             
+    } else if (dtype == DataType::kDate) {
+        if (rawCol->getType() == DataType::kInt64) {
+            auto realCol = dynamic_cast<Column<int64_t, DataType::kInt64>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast int64 column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<int64_t, DataType::kDate>>(
+                realCol->getData(),
+                realCol->getHeader()
+            );
+        } else if (rawCol->getType() == DataType::kFloat64) {
+            auto realCol = dynamic_cast<Column<double, DataType::kFloat64>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast float64 column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<int64_t, DataType::kDate>>(
+                DoublesToInts(realCol->getData()),
+                realCol->getHeader()
+            );
+        } else if (rawCol->getType() == DataType::kString) {
+            auto realCol = dynamic_cast<Column<std::string, DataType::kString>*>(rawCol);
+            if (!realCol) {
+                std::cout << "failed to cast string column for conversion\n";
+                return;
+            }
+            _dataFrame[colToChange] = std::make_unique<Column<int64_t, DataType::kDate>>(
+                StringsToDateInts(realCol->getData()),
+                realCol->getHeader()
+            );          
+        } else if (rawCol->getType() == DataType::kDate) {
+            return;
+        }
+    }
+    return;
+ }
+
+
 // Explicit template instantiations for the linker
 template class Column<double, DataType::kFloat64>;
 template class Column<std::string, DataType::kString>;
