@@ -720,6 +720,8 @@ void DataFrame::printTypes()
             std::cout << " -> int64";
         } else if (type == DataType::kFloat64) {
             std::cout << " -> float64";
+        } else if (type == DataType::kDate) {
+            std::cout << " -> date";
         } else {
             std::cout << " -> string";
         }
