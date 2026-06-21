@@ -10,6 +10,7 @@
 #include <charconv>
 #include <string>
 #include <system_error>
+#include <limits>
 
 /**
  * enum for specifying supported data types
@@ -52,6 +53,7 @@ public:
     virtual std::unique_ptr<ColumnBase> cloneOrdered(const std::vector<size_t>& indexOrder) = 0;
     virtual int compare(size_t i, size_t j) const = 0;
     DataType getType() { return _type; }
+    virtual size_t getHash(int index) const = 0;
     
 protected:
     ColumnBase(DataType type, std::string header) : _type(type), _header(header) {}
@@ -89,6 +91,9 @@ public:
     std::vector<size_t> getOrderedPermutation(bool ascending) override;
     std::unique_ptr<ColumnBase> cloneOrdered(const std::vector<size_t>& indexOrder) override;
     int compare(size_t i, size_t j) const override;
+    size_t getHash(int index) const override {
+        return std::hash<T>{}(this->_data[index]);
+    }
 private:
     std::vector<T> _data;
 };
@@ -105,8 +110,6 @@ private:
     std::vector<std::unique_ptr<ColumnBase>> _index;
     std::pair<int, int> _dimensions;
     void buildDataFrame(std::string content, char seperator);
-    std::unique_ptr<DataFrame> groupByOnly(std::vector<std::string> columnsToGroup, 
-                                       std::vector<std::string> columnsToAggregate, std::vector<std::string> operations);
     std::unique_ptr<DataFrame> valueCountsOnly(std::string columnToGroup);
     std::vector<size_t> getOrderedPerm(std::vector<std::string> colNames, std::vector<bool> ascendingLst);
     std::unique_ptr<DataFrame> pivot();
@@ -285,6 +288,89 @@ inline std::vector<int64_t> StringsToDateInts(const std::vector<std::string>& in
     }
     return out;
 }
+
+
+/**
+ * Asymmetrically combines a new hash into an existing seed.
+ * Required to generate a single unique hash for a row with multiple grouping columns.
+ */
+inline void hash_combine(size_t& seed, size_t new_hash) {
+    seed ^= new_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+
+/**
+ * Encapsulates the unique composite identifier of a specific row.
+ */
+struct GroupKey {
+    std::vector<std::string> string_values;
+    std::vector<int64_t> int_values;
+    std::vector<double> double_values;
+
+    // The library uses this to verify exact matches during hash collisions
+    bool operator==(const GroupKey& other) const {
+        return string_values == other.string_values &&
+               int_values == other.int_values &&
+               double_values == other.double_values;
+    }
+};
+
+
+/**
+ * Houses the running totals and states for the requested math aggregation operations.
+ */
+struct AggAccumulator {
+    double sum = 0.0;
+    double min = std::numeric_limits<double>::infinity();
+    double max = -std::numeric_limits<double>::infinity();
+    int64_t count = 0;
+    
+    // // Running values for standard deviation (Welford's Algorithm)
+    // double welford_m = 0.0;
+    // double welford_s = 0.0;
+};
+
+
+/**
+ * We must provide a custom hasher so the ankerl map knows how to convert 
+ * our custom GroupKey struct into a 64-bit integer.
+ */
+struct GroupKeyHash {
+    using is_avalanching = void; // ankerl optimization flag
+
+    std::size_t operator()(const GroupKey& key) const noexcept {
+        std::size_t seed = 0;
+        
+        for (const auto& str : key.string_values) {
+            hash_combine(seed, std::hash<std::string>{}(str));
+        }
+        for (const auto& val : key.int_values) {
+            hash_combine(seed, std::hash<int64_t>{}(val));
+        }
+        for (const auto& val : key.double_values) {
+            hash_combine(seed, std::hash<double>{}(val));
+        }
+        
+        return seed;
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 TO DO:

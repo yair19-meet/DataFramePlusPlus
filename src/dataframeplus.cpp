@@ -12,6 +12,8 @@
 #include <cmath>
 #include "dataframeplus.h"
 
+#include "../include/unordered_dense.h"
+
 int64_t DataFrame::parseDate(const std::string& s)
 {
     int y = 0, m = 0, d = 0;
@@ -968,13 +970,8 @@ std::unique_ptr<DataFrame> DataFrame::valueCounts(std::string columnToGroup)
     return sorted->valueCountsOnly(columnToGroup);
 }
 
-
-// Funtion for performing GroupBy by multiple columns. 
-// When executing this function, we assume the dataframe is already sorted by the columns to group.
-// As arguments to the function the columns to aggregate are specified as well, 
-// and also the corresponding operations that should be performed on the columns to aggregate.
-// Valid operations include sum, mean, max, min, mode and std.
-std::unique_ptr<DataFrame> DataFrame::groupByOnly(std::vector<std::string> columnsToGroup, 
+// Group by - new implementation using ankerl hashmap
+std::unique_ptr<DataFrame> DataFrame::groupBy(std::vector<std::string> columnsToGroup, 
                                        std::vector<std::string> columnsToAggregate, std::vector<std::string> operations)
 {
 
@@ -998,12 +995,11 @@ std::unique_ptr<DataFrame> DataFrame::groupByOnly(std::vector<std::string> colum
         {
             if (col == this->_dataFrame[i]->getHeader()) {
                 found = true;
-                if (this->_dataFrame[i]->getType() == DataType::kString && operations[colIndex] != "count") {
-                    throw std::logic_error("Cannot aggregate string column for non-count operations");
+                if (this->_dataFrame[i]->getType() == DataType::kString) {
+                    throw std::logic_error("Cannot aggregate string column");
                 }
-                if (std::find(aggregated_cols.begin(), aggregated_cols.end(), i) == aggregated_cols.end()) {
-                    aggregated_cols.push_back(i);
-                }
+                aggregated_cols.push_back(i);
+                break;
             }
         }
         if (!found) {
@@ -1032,176 +1028,125 @@ std::unique_ptr<DataFrame> DataFrame::groupByOnly(std::vector<std::string> colum
         }
     }
 
-    // claculating the index boundaries of each unique set of labels. 
-    // (we assume the columns are already sorted, so the same labels will appear in consecutive order).
-    // We treat each set of labels as a vector of strings because we group by multiple columns.
-    std::vector<int> groupBoundaries = {0};
-    std::vector<std::string> label;
-    for (auto& index : groupCols)
-    {
-        label.push_back(this->_dataFrame[index]->getAsString(0));
-    }
-    // In labels we store the unique values (labels) of the columns grouped together.
-    std::vector<std::vector<std::string>> labels = {label};
-    for (int i = 1; i < this->_dimensions.first; ++i)
-    {
-        std::vector<std::string> nextLabel;
-        for (auto& index : groupCols)
-        {
-            nextLabel.push_back(this->_dataFrame[index]->getAsString(i));
-        }       
-        if (nextLabel != label) {
-            groupBoundaries.push_back(i);
-            labels.push_back(nextLabel);
-            label.clear();
-            label = nextLabel;
-        }
-    }
-    groupBoundaries.push_back(this->_dimensions.first);
+    ankerl::unordered_dense::map<GroupKey, std::vector<AggAccumulator>, GroupKeyHash> table;
 
-    // In aggregations we store the aggregated results. Each nested vector will be a column in the new dataframe.
-    std::vector<std::vector<double>> aggregations;
-    int numGroups = labels.size();
-  
-    colIndex = 0;
-    for (auto& col : aggregated_cols)
-    {
-        // For each column to aggregate we create a vector of type double. 
-        // Each element in the vector will correspond to a value for a unique set of labels.
-        std::vector<double> agg(numGroups, 0.0);
-        for (int index = 0; index < groupBoundaries.size() - 1; ++index)
-        {
-            if (operations[colIndex] == "sum") {
-                for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i)
-                {
-                    agg[index] += this->_dataFrame[col]->getAsDouble(i);
-                }
-            } else if (operations[colIndex] == "mean") {
-                for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i)
-                {
-                    agg[index] += this->_dataFrame[col]->getAsDouble(i);
-                }
-                agg[index] = agg[index] / (groupBoundaries[index + 1] - groupBoundaries[index]);
-            } else if (operations[colIndex] == "max") {
-                double max = -std::numeric_limits<double>::infinity();
-                for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i)
-                {
-                    double value = this->_dataFrame[col]->getAsDouble(i);
-                    if (value > max) {
-                        max = value;
-                    }
-                }
-                agg[index] = max;
-            } else if (operations[colIndex] == "min") {
-                double min = std::numeric_limits<double>::infinity();
-                for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i)
-                {
-                    double value = this->_dataFrame[col]->getAsDouble(i);
-                    if (value < min) {
-                        min = value;
-                    }
-                }
-                agg[index] = min;
-            } else if (operations[colIndex] == "mode") {
-                std::map<double, int> valueCounts;
-                for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i)
-                {
-                    double value = this->_dataFrame[col]->getAsDouble(i);
-                    valueCounts[value] += 1;
-                }
-                auto it = std::max_element(valueCounts.begin(), valueCounts.end(),
-                [](const std::pair<double,int>& a, const std::pair<double,int>& b) {
-                    return a.second < b.second;
-                });
-                agg[index] = it->first;
-            } else if (operations[colIndex] == "count") {
-                agg[index] = (double)(groupBoundaries[index + 1] - groupBoundaries[index]);
-            } else if (operations[colIndex] == "std") {
-                int count = groupBoundaries[index + 1] - groupBoundaries[index];
-                if (count < 2) {
-                    agg[index] = 0.0;
-                } else {
-                    double avg = 0;
-                    for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i)
-                        avg += this->_dataFrame[col]->getAsDouble(i);
-                    avg /= (double)count;
-
-                    double sumSqDiff = 0;
-                    for (int i = groupBoundaries[index]; i < groupBoundaries[index + 1]; ++i) {
-                        double diff = this->_dataFrame[col]->getAsDouble(i) - avg;
-                        sumSqDiff += diff * diff;
-                    }
-                    agg[index] = std::sqrt(sumSqDiff / (double)(count - 1));
-                }
+    for (int i = 0; i < this->_dimensions.first; ++i) {
+        GroupKey rowKey;
+        for (auto col : groupCols) {
+            ColumnBase* rawCol = _dataFrame[col].get();
+            if (rawCol->getType() == DataType::kString) {
+                rowKey.string_values.push_back(rawCol->getAsString(i));
+            } else if (rawCol->getType() == DataType::kInt64 || rawCol->getType() == DataType::kDate) {
+                rowKey.int_values.push_back(rawCol->getAsInt(i));
+            } else if (rawCol->getType() == DataType::kFloat64) {
+                rowKey.double_values.push_back(rawCol->getAsDouble(i));
             }
         }
-        aggregations.push_back(agg);
-        ++colIndex;
+
+        auto& accumulators = table[rowKey];
+
+        if (accumulators.empty()) {
+            accumulators.resize(aggregated_cols.size()); 
+        }
+
+        for (int j = 0; j < aggregated_cols.size(); ++j) {
+            double val = _dataFrame[aggregated_cols[j]]->getAsDouble(i);
+            accumulators[j].count += 1;
+            accumulators[j].sum += val;
+            if (val > accumulators[j].max)
+                accumulators[j].max = val;
+            if (val < accumulators[j].min)
+                accumulators[j].min = val;
+        }
     }
 
-    // creating a new dataframe.
-    std::unique_ptr<DataFrame> df = std::make_unique<DataFrame>();
-    df->setDimensions(std::make_pair(labels.size(), 0));
+    if (table.empty()) {
+        return std::make_unique<DataFrame>();
+    }
 
-    // Creating the indexes of the new dataframe with preserved types.
-    for (int i = 0; i < (int)groupCols.size(); ++i)
-    {
-        int originalColIdx = groupCols[i];
-        DataType type = this->_dataFrame[originalColIdx]->getType();
+    std::unique_ptr<DataFrame> newDF = std::make_unique<DataFrame>();
+    newDF->setDimensions(std::make_pair(table.size(), 0));
+
+    std::vector<std::vector<std::string>> strIndexes;
+    strIndexes.resize(table.begin()->first.string_values.size());
+    std::vector<std::vector<int64_t>> intIndexes;
+    intIndexes.resize(table.begin()->first.int_values.size());
+    std::vector<std::vector<double>> doubleIndexes;
+    doubleIndexes.resize(table.begin()->first.double_values.size());
+
+    std::vector<std::vector<double>> aggColumns(aggregated_cols.size());
+
+    for (const auto& kv : table) {
+        const GroupKey& key = kv.first;
+        const std::vector<AggAccumulator>& accumulators = kv.second;
+        int index = 0;
+        for (auto& label : key.string_values) {
+            strIndexes[index].push_back(label);
+            ++index;
+        }
+        index = 0;
+        for (auto& label : key.int_values) {
+            intIndexes[index].push_back(label);
+            ++index;
+        }
+        index = 0;
+        for (auto& label : key.double_values) {
+            doubleIndexes[index].push_back(label);
+            ++index;
+        }
+
+        for (size_t j = 0; j < accumulators.size(); ++j) {
+            const std::string& op = operations[j];
+            double final_result = 0.0;
+
+            if (op == "sum") {
+                final_result = accumulators[j].sum;
+            } else if (op == "mean") {
+                final_result = accumulators[j].count > 0 ? (accumulators[j].sum / accumulators[j].count) : 0.0;
+            } else if (op == "min") {
+                final_result = accumulators[j].min;
+            } else if (op == "max") {
+                final_result = accumulators[j].max;
+            } else if (op == "count") {
+                final_result = static_cast<double>(accumulators[j].count);
+            }
+
+            aggColumns[j].push_back(final_result);
+        }
+    }
+
+    int str_c = 0, int_c = 0, double_c = 0;
+    
+    for (int col_idx : groupCols) {
+        ColumnBase* rawCol = _dataFrame[col_idx].get();
         
-        if (type == DataType::kString) {
-            std::vector<std::string> vals;
-            for (auto& label : labels) vals.push_back(label[i]);
-            df->AddIndexCol(std::make_unique<Column<std::string, DataType::kString>>(vals, "Index"));
-        } else if (type == DataType::kFloat64) {
-            std::vector<double> vals;
-            for (int b = 0; b < (int)groupBoundaries.size() - 1; ++b) {
-                vals.push_back(this->_dataFrame[originalColIdx]->getAsDouble(groupBoundaries[b]));
-            }
-            df->AddIndexCol(std::make_unique<Column<double, DataType::kFloat64>>(vals, "Index"));
-        } else if (type == DataType::kInt64) {
-            std::vector<int64_t> vals;
-            for (int b = 0; b < (int)groupBoundaries.size() - 1; ++b) {
-                vals.push_back(this->_dataFrame[originalColIdx]->getAsInt(groupBoundaries[b]));
-            }
-            df->AddIndexCol(std::make_unique<Column<int64_t, DataType::kInt64>>(vals, "Index"));
-        } else if (type == DataType::kDate) {
-            std::vector<int64_t> vals;
-            for (int b = 0; b < (int)groupBoundaries.size() - 1; ++b) {
-                vals.push_back(this->_dataFrame[originalColIdx]->getAsInt(groupBoundaries[b]));
-            }
-            df->AddIndexCol(std::make_unique<Column<int64_t, DataType::kDate>>(vals, "Index"));
+        if (rawCol->getType() == DataType::kString) {
+            newDF->AddIndexCol(std::make_unique<Column<std::string, DataType::kString>>(
+                strIndexes[str_c++], rawCol->getHeader()));
+                
+        } else if (rawCol->getType() == DataType::kInt64) {
+            newDF->AddIndexCol(std::make_unique<Column<int64_t, DataType::kInt64>>(
+                intIndexes[int_c++], rawCol->getHeader()));
+                
+        } else if (rawCol->getType() == DataType::kDate) {
+            newDF->AddIndexCol(std::make_unique<Column<int64_t, DataType::kDate>>(
+                intIndexes[int_c++], rawCol->getHeader()));
+                
+        } else if (rawCol->getType() == DataType::kFloat64) {
+            newDF->AddIndexCol(std::make_unique<Column<double, DataType::kFloat64>>(
+                doubleIndexes[double_c++], rawCol->getHeader()));
         }
     }
 
-    // Adding to the new dataframe the aggregated data.
-    int i = 0;
-    for (auto& col : aggregations)
-    {
-        df->AddColumn(std::make_unique<Column<double, DataType::kFloat64>>(col, columnsToAggregate[i]));
-        ++i;
+    int index = 0;
+    for (auto& aggCol : aggColumns) {
+        std::string colHeader = columnsToAggregate[index] + " (" + operations[index] + ")";
+        newDF->AddColumn(std::make_unique<Column<double, DataType::kFloat64>>(aggCol, colHeader));
+        ++index;
     }
 
-    // returning the new dataframe.
-    return df;  
+    return newDF;
 }
-
-// Function for performing GroupBy by mutliple columns.
-// As arguments to the function the columns to aggregate are specified as well, 
-// and aslo the corresponding operations that should be performed on the columns to aggregate.
-// Valid operations include sum, mean, max, min, mode and std.
-std::unique_ptr<DataFrame> DataFrame::groupBy(std::vector<std::string> columnsToGroup, 
-                                       std::vector<std::string> columnsToAggregate, std::vector<std::string> operations)
-{
-    // First create a sorted dataframe (sorted by the columns to group by), then call the function that performs the group by.
-    // We return a new dataframe.
-    int len = columnsToGroup.size();
-    std::vector<bool> v(len, true);
-    auto sortedDf = this->sortValues(columnsToGroup, v);
-    if (!sortedDf) return nullptr;
-    return sortedDf->groupByOnly(columnsToGroup, columnsToAggregate, operations);
-}
-
 
 void DataFrame::resetIndex()
 {
