@@ -242,7 +242,7 @@ public:
     std::unique_ptr<DataFrame> valueCounts(std::string columnToGroup);
     std::unique_ptr<DataFrame> sortValues(std::string col, bool ascending);
     std::unique_ptr<DataFrame> sortValues(std::vector<std::string> colNames, std::vector<bool> ascendingLst);
-    std::unique_ptr<DataFrame> concatVertically(const DataFrame& df);
+    std::unique_ptr<DataFrame> concatVertically(DataFrame& df);
     void plotValueCount(std::string columnToGroup);
     void barPlot(std::string columnToPlot);
     void resetIndex();

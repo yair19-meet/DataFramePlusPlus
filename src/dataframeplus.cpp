@@ -1390,7 +1390,7 @@ std::unique_ptr<DataFrame> DataFrame::pivotTable(std::string rows, std::string c
 
 
 // The following function assumes that the column names in both dataframes are distinct.
-std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
+std::unique_ptr<DataFrame> DataFrame::concatVertically(DataFrame& df)
 {
     // here we store the column indices of the new dataframe to be created
     // mapped to the column indices of the existing dataframes.
@@ -1406,12 +1406,6 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
         {
             // if both dataframes have a column with the same header
             if (_dataFrame[i]->getHeader() == df._dataFrame[j]->getHeader()) {
-                // we first check that the types are aligned.
-                if (_dataFrame[i]->getType() == DataType::kString && df._dataFrame[j]->getType() != DataType::kString ||
-                    _dataFrame[i]->getType() != DataType::kString && df._dataFrame[j]->getType() == DataType::kString) {
-                    std::cout << "column types do not match. cannot concatenate.\n";
-                    return nullptr;
-                }
                 // we map the index to the column index in this.
                 indicesMap1[index] = i;
                 // we map the index to the column index in df.
@@ -1441,6 +1435,16 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
     std::unique_ptr<DataFrame> dfNew = std::make_unique<DataFrame>();
     dfNew->setDimensions(std::make_pair(_dimensions.first + df._dimensions.first, 0));
 
+    std::unique_ptr<DataFrame> dfCopy = df.clone();
+
+    for (int i = 0; i < index; ++i)
+    {
+        if (indicesMap1.find(i) != indicesMap1.end() && indicesMap2.find(i) != indicesMap2.end()) {
+            DataType colType = _dataFrame[indicesMap1[i]]->getType();
+            dfCopy->convertDataType(df._dataFrame[indicesMap2[i]]->getHeader(), colType);
+        }
+    }
+
     // iterating through the indices, 
     // creating in each iteration a new column and adding it to the new dataframe dfNew.
     for (int i = 0; i < index; ++i)
@@ -1457,16 +1461,34 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                     newCol.push_back(_dataFrame[indicesMap1[i]]->getAsString(j));
                 }
                 // adding to newCol the elements from the column in df.
-                for (int j = 0; j < df._dimensions.first; ++j)
+                for (int j = 0; j < dfCopy->_dimensions.first; ++j)
                 {
-                    newCol.push_back(df._dataFrame[indicesMap2[i]]->getAsString(j));
+                    newCol.push_back(dfCopy->_dataFrame[indicesMap2[i]]->getAsString(j));
                 }
                 // adding to dfNew the new column.
                 dfNew->AddColumn(std::make_unique<Column<std::string, DataType::kString>>
                                 (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
             } 
-            // the types are int64 or float64
-            else if (colType == DataType::kInt64 || colType == DataType::kFloat64) {
+            // the type is int64 
+            else if (colType == DataType::kInt64) {
+                // new column
+                std::vector<int64_t> newCol;
+                // adding to newCol the elements from the column in this
+                for (int j = 0; j < _dimensions.first; ++j)
+                {
+                    newCol.push_back(_dataFrame[indicesMap1[i]]->getAsInt(j));
+                }
+                // adding to newCol the elements from the column in df.
+                for (int j = 0; j < dfCopy->_dimensions.first; ++j)
+                {
+                    newCol.push_back(dfCopy->_dataFrame[indicesMap2[i]]->getAsInt(j));
+                }
+                // adding to dfNew the new column.
+                dfNew->AddColumn(std::make_unique<Column<int64_t, DataType::kInt64>>
+                                (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
+            } 
+            // the type is float64 
+            else if (colType == DataType::kFloat64) {
                 // new column
                 std::vector<double> newCol;
                 // adding to newCol the elements from the column in this
@@ -1475,16 +1497,16 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                     newCol.push_back(_dataFrame[indicesMap1[i]]->getAsDouble(j));
                 }
                 // adding to newCol the elements from the column in df.
-                for (int j = 0; j < df._dimensions.first; ++j)
+                for (int j = 0; j < dfCopy->_dimensions.first; ++j)
                 {
-                    newCol.push_back(df._dataFrame[indicesMap2[i]]->getAsDouble(j));
+                    newCol.push_back(dfCopy->_dataFrame[indicesMap2[i]]->getAsDouble(j));
                 }
                 // adding to dfNew the new column.
                 dfNew->AddColumn(std::make_unique<Column<double, DataType::kFloat64>>
                                 (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
             } 
             // the type is date
-            else {
+            else if (colType == DataType::kDate) {
                // new column
                 std::vector<int64_t> newCol;
                 // adding to newCol the elements from the column in this
@@ -1493,12 +1515,12 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                     newCol.push_back(_dataFrame[indicesMap1[i]]->getAsInt(j));
                 }
                 // adding to newCol the elements from the column in df.
-                for (int j = 0; j < df._dimensions.first; ++j)
+                for (int j = 0; j < dfCopy->_dimensions.first; ++j)
                 {
-                    newCol.push_back(df._dataFrame[indicesMap2[i]]->getAsInt(j));
+                    newCol.push_back(dfCopy->_dataFrame[indicesMap2[i]]->getAsInt(j));
                 }
                 // adding to dfNew the new column.
-                dfNew->AddColumn(std::make_unique<Column<int64_t, DataType::kInt64>>
+                dfNew->AddColumn(std::make_unique<Column<int64_t, DataType::kDate>>
                                 (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
             }
         } 
@@ -1522,8 +1544,25 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                 dfNew->AddColumn(std::make_unique<Column<std::string, DataType::kString>>
                                 (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
             } 
-            // it is int64 or float64
-             else if (colType == DataType::kInt64 || colType == DataType::kFloat64) {
+            // it is int64 
+            else if (colType == DataType::kInt64) {
+                // new column
+                std::vector<int64_t> newCol;
+                for (int j = 0; j < _dimensions.first; ++j)
+                {
+                    newCol.push_back(_dataFrame[indicesMap1[i]]->getAsInt(j));
+                }
+                // adding to newCol empty elements.
+                for (int j = 0; j < df._dimensions.first; ++j)
+                {
+                    newCol.push_back(0);
+                }
+                // adding to dfNew the new column.
+                dfNew->AddColumn(std::make_unique<Column<int64_t, DataType::kInt64>>
+                                (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
+            }  
+            // it is float64 
+            else if (colType == DataType::kFloat64) {
                 // new column
                 std::vector<double> newCol;
                 for (int j = 0; j < _dimensions.first; ++j)
@@ -1538,9 +1577,9 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                 // adding to dfNew the new column.
                 dfNew->AddColumn(std::make_unique<Column<double, DataType::kFloat64>>
                                 (newCol, _dataFrame[indicesMap1[i]]->getHeader()));
-            }      
+            }        
             // type is date
-            else {
+            else if (colType == DataType::kDate) {
                 // new column
                 std::vector<int64_t> newCol;
                 for (int j = 0; j < _dimensions.first; ++j)
@@ -1578,8 +1617,26 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                 dfNew->AddColumn(std::make_unique<Column<std::string, DataType::kString>>
                                 (newCol, df._dataFrame[indicesMap2[i]]->getHeader()));
             } 
-            // it is int64 or float64
-             else if (colType == DataType::kInt64 || colType == DataType::kFloat64) {
+            // it is int64 
+            else if (colType == DataType::kInt64) {
+                // new column
+                std::vector<int64_t> newCol;
+                // adding to newCol empty elements.
+                for (int j = 0; j < _dimensions.first; ++j)
+                {
+                    newCol.push_back(0);
+                }
+                // adding to newCol the elements from the column in df.
+                for (int j = 0; j < df._dimensions.first; ++j)
+                {
+                    newCol.push_back(df._dataFrame[indicesMap2[i]]->getAsInt(j));
+                }
+                // adding to dfNew the new column.
+                dfNew->AddColumn(std::make_unique<Column<int64_t, DataType::kInt64>>
+                                (newCol, df._dataFrame[indicesMap2[i]]->getHeader()));
+            }  
+            // it is float64
+            else if (colType == DataType::kFloat64) {
                 // new column
                 std::vector<double> newCol;
                 // adding to newCol empty elements.
@@ -1597,7 +1654,7 @@ std::unique_ptr<DataFrame> DataFrame::concatVertically(const DataFrame& df)
                                 (newCol, df._dataFrame[indicesMap2[i]]->getHeader()));
             }  
             // type is date
-            else {
+            else if (colType == DataType::kDate) {
                 // new column
                 std::vector<int64_t> newCol;
                 // adding to newCol empty elements.
