@@ -12,6 +12,7 @@
 #include <system_error>
 #include <limits>
 
+
 /**
  * enum for specifying supported data types
  */
@@ -103,6 +104,8 @@ using IntColumn = Column<int64_t, DataType::kInt64>;
 using StringColumn = Column<std::string, DataType::kString>;
 using FloatColumn = Column<double, DataType::kFloat64>;
 
+class Matrix;
+
 class DataFrame 
 {
 private:
@@ -161,6 +164,8 @@ public:
     void renameColumns(std::vector<std::string> header);
     void transitionGroupedColumns(const std::vector<std::string>& names);
     void convertDataType(std::string col, DataType dtype);
+    std::unique_ptr<DataFrame> innerJoin(DataFrame& df, std::string column);
+    std::unique_ptr<Matrix> toMatrix(const std::vector<std::string>& featureCols);
 };
 
 inline std::string to_lowercase(std::string s) {
@@ -352,6 +357,65 @@ struct GroupKeyHash {
         }
         
         return seed;
+    }
+};
+
+
+struct JoinKey {
+    DataType type;
+    
+    // We store all possible types flatly. Memory here is cheap; 
+    // heap allocations (like vectors) are expensive!
+    std::string str_val; 
+    int64_t int_val = 0;
+    double double_val = 0.0;
+
+    // The equality operator only checks the variable that matches the type
+    bool operator==(const JoinKey& other) const {
+        if (type != other.type) return false;
+        
+        if (type == DataType::kString) return str_val == other.str_val;
+        if (type == DataType::kInt64 || type == DataType::kDate) return int_val == other.int_val;
+        if (type == DataType::kFloat64) return double_val == other.double_val;
+        
+        return false;
+    }
+};
+
+
+struct JoinKeyHash {
+    std::size_t operator()(const JoinKey& k) const {
+        std::size_t seed = std::hash<int>{}(static_cast<int>(k.type));
+
+        auto combine = [&seed](std::size_t hash) {
+            seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        };
+
+        // Only hash the value that actually matters for this key
+        if (k.type == DataType::kString) {
+            combine(std::hash<std::string>{}(k.str_val));
+        } else if (k.type == DataType::kInt64 || k.type == DataType::kDate) {
+            combine(std::hash<int64_t>{}(k.int_val));
+        } else if (k.type == DataType::kFloat64) {
+            combine(std::hash<double>{}(k.double_val));
+        }
+
+        return seed;
+    }
+};
+
+
+struct IndexAccumulator {
+    std::vector<int> row_indices;
+
+    // Helper to push a new matching row index
+    void add(int row_index) {
+        row_indices.push_back(row_index);
+    }
+
+    // Get the total number of matched rows for this key
+    size_t count() const {
+        return row_indices.size();
     }
 };
 

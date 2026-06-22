@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cmath>
 #include "dataframeplus.h"
+#include "ml.h"
 
 #include "../include/unordered_dense.h"
 
@@ -969,6 +970,134 @@ std::unique_ptr<DataFrame> DataFrame::valueCounts(std::string columnToGroup)
     if (!sorted) return nullptr;
     return sorted->valueCountsOnly(columnToGroup);
 }
+
+
+
+std::unique_ptr<DataFrame> DataFrame::innerJoin(DataFrame& df, std::string column)
+{
+    ankerl::unordered_dense::map<JoinKey, IndexAccumulator, JoinKeyHash> table;
+
+    DataFrame* smallDf = (this->getDimensions().first < df.getDimensions().first) ? this : &df;
+    DataFrame* bigDf = (this->getDimensions().first < df.getDimensions().first) ? &df : this;
+
+    int sharedColInSmallDf;
+    int sharedColInBigDf;
+
+    std::unordered_map<std::string, size_t> columnsInSmallDfMap;
+
+    std::vector<size_t> smallDuplicateCols;
+    std::vector<size_t> bigDuplicateCols;
+
+    bool found = false;
+    for (int i = 0; i < smallDf->_dimensions.second; ++i)
+    {
+        if (column == smallDf->_dataFrame[i]->getHeader()) {
+            sharedColInSmallDf = i;
+            found = true;
+        }
+        columnsInSmallDfMap[smallDf->_dataFrame[i]->getHeader()] = i;
+    }
+    if (!found) {
+        std::cout << "column not found: " << column << ".\n";
+        return nullptr;
+    }
+
+    found = false;
+    for (int i = 0; i < bigDf->_dimensions.second; ++i)
+    {
+        if (column == bigDf->_dataFrame[i]->getHeader()) {
+            sharedColInBigDf = i;
+            found = true;
+        } else {
+            if (columnsInSmallDfMap.find(bigDf->_dataFrame[i]->getHeader()) != columnsInSmallDfMap.end()) {
+                smallDuplicateCols.push_back(columnsInSmallDfMap[bigDf->_dataFrame[i]->getHeader()]);
+                bigDuplicateCols.push_back(i);
+            }
+        }
+    }
+    if (!found) {
+        std::cout << "column not found: " << column << ".\n";
+        return nullptr;
+    }
+    
+    DataType smallDfColType = smallDf->_dataFrame[sharedColInSmallDf]->getType();
+    DataType bigDfColType = bigDf->_dataFrame[sharedColInBigDf]->getType();
+
+    if (smallDfColType != bigDfColType) {
+        std::cout << "Cannot join on a shared column with different types.\n";
+        return nullptr;
+    }
+
+    for (int i = 0; i < smallDf->getDimensions().first; ++i)
+    {
+        JoinKey rowKey;
+        rowKey.type = smallDfColType;
+        if (smallDfColType == DataType::kString) {
+            rowKey.str_val = smallDf->_dataFrame[sharedColInSmallDf]->getAsString(i);
+        } else if (smallDfColType == DataType::kInt64 || smallDfColType == DataType::kDate) {
+            rowKey.int_val = smallDf->_dataFrame[sharedColInSmallDf]->getAsInt(i);
+        } else if (smallDfColType == DataType::kFloat64) {
+            rowKey.double_val = smallDf->_dataFrame[sharedColInSmallDf]->getAsDouble(i);
+        }
+
+        auto& accumulator = table[rowKey];
+        accumulator.add(i);
+    }
+
+    std::vector<size_t> permSmallDf;
+    std::vector<size_t> permBigDf;
+
+    for (int i = 0; i < bigDf->getDimensions().first; ++i)
+    {
+        JoinKey probeKey;
+        probeKey.type = bigDfColType; 
+        if (bigDfColType == DataType::kString)
+            probeKey.str_val = bigDf->_dataFrame[sharedColInBigDf]->getAsString(i);
+        else if (bigDfColType == DataType::kInt64 || bigDfColType == DataType::kDate)
+            probeKey.int_val = bigDf->_dataFrame[sharedColInBigDf]->getAsInt(i);
+        else if (bigDfColType == DataType::kFloat64)
+            probeKey.double_val = bigDf->_dataFrame[sharedColInBigDf]->getAsDouble(i);
+
+        auto it = table.find(probeKey);
+        if (it != table.end()) {
+            for (int smallRowIdx : it->second.row_indices) {
+                permSmallDf.push_back(smallRowIdx);
+                permBigDf.push_back(i);
+            }
+        }
+    }
+
+    std::unique_ptr<DataFrame> newDf = std::make_unique<DataFrame>();
+    newDf->setDimensions(std::make_pair(permSmallDf.size(), 0));
+
+    std::string smallSuffix = (smallDf == this) ? "_x" : "_y";
+    std::string bigSuffix = (bigDf == this) ? "_x" : "_y";
+
+    for (int colIndex = 0; colIndex < smallDf->getDimensions().second; ++colIndex) {
+        std::unique_ptr<ColumnBase> newCol = smallDf->_dataFrame[colIndex]->cloneOrdered(permSmallDf);
+        auto it = std::find(smallDuplicateCols.begin(), smallDuplicateCols.end(), colIndex);
+        if (it != smallDuplicateCols.end()) {
+            newCol->rename(newCol->getHeader() + smallSuffix);
+        }
+        newDf->AddColumn(std::move(newCol));
+    } 
+
+    for (int colIndex = 0; colIndex < bigDf->getDimensions().second; ++colIndex) {
+        if (colIndex != sharedColInBigDf) {
+            std::unique_ptr<ColumnBase> newCol = bigDf->_dataFrame[colIndex]->cloneOrdered(permBigDf);
+            auto it = std::find(bigDuplicateCols.begin(), bigDuplicateCols.end(), colIndex);
+            if (it != bigDuplicateCols.end()) {
+                newCol->rename(newCol->getHeader() + bigSuffix);
+            }
+            newDf->AddColumn(std::move(newCol));
+        }
+    } 
+
+    newDf->resetIndex();
+
+    return newDf;
+}
+
 
 // Group by - new implementation using ankerl hashmap
 std::unique_ptr<DataFrame> DataFrame::groupBy(std::vector<std::string> columnsToGroup, 
@@ -2177,7 +2306,45 @@ ColumnBase* DataFrame::getColumn(std::string colName) const {
         }
     }
     return;
- }
+}
+
+
+std::unique_ptr<Matrix> DataFrame::toMatrix(const std::vector<std::string>& featureCols) {
+    std::vector<int> colIndexes;
+
+    for (auto& col : featureCols) {
+        bool found = false;
+        for (int i = 0; i < this->_dimensions.second; ++i)
+        {
+            if (col == this->_dataFrame[i]->getHeader()) {
+                colIndexes.push_back(i);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            std::cout << "column not found: " << col << ".\n";
+            return nullptr;
+        }
+    }
+ 
+
+    size_t numRows = this->_dimensions.first;
+    size_t numCols = featureCols.size();
+
+    std::unique_ptr<Matrix> mat = std::make_unique<Matrix>(numRows, numCols);
+
+    for (size_t col = 0; col < numCols; ++col) {
+        ColumnBase* rawCol = _dataFrame[colIndexes[col]].get();
+        for (size_t row = 0; row < numRows; ++row) {
+           mat->modify(row, col, rawCol->getAsDouble(row));
+        }
+    }
+
+    return mat;
+}
+
+
 
 
 // Explicit template instantiations for the linker
